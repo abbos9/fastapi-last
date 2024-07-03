@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from typing import List, Optional
 import json
 from schema import BookCreateSchema, BookResponseSchema
@@ -62,8 +62,11 @@ async def create_book(book: BookCreateSchema):
 async def read_books(author: Optional[str] = None):
     books = read_books_from_file()
     if author:
-        books = [book for book in books if book["author"] == author]
-    return [serialize_book(book) for book in books]
+        # Perform case-insensitive search
+        matching_books = [book for book in books if author.lower() in book["author"].lower()]
+    else:
+        matching_books = books
+    return [serialize_book(book) for book in matching_books]
 
 # Endpoint to read a single Book by id
 @app.get("/book/{book_id}", response_model=BookResponseSchema)
@@ -73,3 +76,20 @@ async def read_book(book_id: int):
         if book['id'] == book_id:
             return serialize_book(book)
     raise HTTPException(status_code=404, detail="Book not found")
+
+# Endpoint to get book statistics
+@app.get("/books/stats/")
+async def get_book_stats(days: Optional[int] = Query(5)):
+    books = read_books_from_file()
+    stats = {}
+    now = datetime.now()
+    
+    for book in books:
+        days_diff = (now - book['created_at']).days
+        if days_diff < days:
+            day_str = book['created_at'].strftime("%Y-%m-%d")
+            if day_str not in stats:
+                stats[day_str] = 0
+            stats[day_str] += 1
+    
+    return stats
